@@ -2,22 +2,53 @@
 
 A comprehensive Docker-based monitoring and configuration management system for Citrix environments, providing metrics collection, data storage, and visualization capabilities.
 
+## Project Goals
+
+The main objectives of this project are:
+
+1. **Standalone uberAgent Deployment**
+   - Enable uberAgent usage without requiring Splunk infrastructure
+   - Reduce total cost of ownership by eliminating Splunk licensing costs
+   - Minimize computational resources by using efficient time-series databases
+   - Provide a lightweight yet powerful monitoring solution
+
+2. **Resource Optimization**
+   - Single VM deployment for the entire monitoring stack
+   - Efficient data processing through containerized microservices
+   - Optimized storage usage with VictoriaMetrics and VictoriaLogs
+   - Minimal memory footprint through careful container configuration
+
+## Component Documentation
+
+Each container in the platform has its own detailed documentation in its respective directory:
+
+- [NGINX Configuration](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/nginx/README.md) - Ingress point for uberAgent metrics
+- [Fluent Bit Metrics](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/fluentbit_metrics/README.md) - Metrics processing and transformation
+- [Fluent Bit Logs](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/fluentbit_logs/README.md) - Log processing and forwarding
+- [Traefik](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/traefik/README.md) - Reverse proxy and SSL termination
+- [Telegraf](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/telegraf/README.md) - System and container monitoring
+- [Citrix Metrics](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/citrix_metrics/README.md) - Citrix Cloud API integration
+- [ProxyTrace](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/proxytrace/README.md) - Session tracing and Jaeger integration
+- [Sidecar](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/sidecar/README.md) - Configuration and certificate management
+- [Infinity Proxy](https://github.com/andreaz86/CitrixOSMonitoringPlatform/tree/main/infinity_proxy/README.md) - Citrix API proxy for Grafana
+
+Each component's documentation includes:
+- Detailed configuration guide
+- Environment variables explanation
+
 ## Disclaimer
 
 This project is not officially supported by Citrix Systems, Inc. It is a community-driven monitoring solution that integrates with Citrix products. While we strive to maintain compatibility with Citrix services, this is not an official Citrix product, and Citrix does not provide support for this solution.
 
 Pull requests and contributions are welcome and will be handled on a best-effort basis by the community maintainers. While we appreciate community involvement, response times and implementation timelines cannot be guaranteed.
 
-For production environments, always ensure you have proper support agreements in place with Citrix for their official products and services.
-
 ## System Requirements
 
 ### Host Machine Requirements
-- Operating System: Debian Linux (tested on Debian 11/12)
+- Operating System: Debian Linux (tested on Debian 12)
 - CPU: Minimum 4 cores
 - RAM: Minimum 8GB (16GB recommended)
-- Storage: At least 100GB available space (SSD recommended)
-- Network: Reliable network connection with access to Citrix Cloud APIs
+- Storage: it depends by VDA numbers and retention
 
 ### Software Prerequisites
 
@@ -78,20 +109,21 @@ sudo systemctl enable docker
 
 The system consists of multiple Docker containers working together:
 
-- **Citrix Metrics Collector**: Collects metrics and configuration data from Citrix Cloud API
+- **Citrix Metrics Collector**: Collects metrics and configuration data from Citrix Cloud API (Catalogs, DeliveryGroups, Machines, SessionFailures)
 - **Sidecar**: Manages configuration templates for uberAgent and Telegraf
-- **Telegraf Builder**: Builds a custom Windows version of Telegraf based on the configurations
+- **Telegraf Builder**: Builds a custom Windows version of Telegraf based on the configurations templates
 - **VictoriaMetrics/VictoriaLogs**: Databases for storing metrics and logs
-- **PostgreSQL**: Database for storing configuration data
+- **PostgreSQL**: Database for storing configuration data for grafana and Citrix Metric Collector
 - **Grafana**: Visualization of metrics and dashboards
 - **Fluent Bit**: Processing and forwarding logs and metrics
-- **Traefik**: Reverse proxy and load balancer
-- **NGINX**: Serves configuration files and acts as a web server
-- **ProxyTrace**: Proxy for processing trace data
+- **Traefik**: Reverse proxy for accessing grafana and repo
+- **NGINX**: Serves configuration files and acts as reverse proxy
+- **ProxyTrace**: Proxy for processing trace data from logon metrics
 - **Jaeger**: Distributed tracing system for monitoring and troubleshooting
-- **VmAgent**: Agent for collecting Prometheus metrics
+- **VmAgent**: Agent for collecting Prometheus metrics from internal components
 - **VmAlert**: Alerting system integrated with VictoriaMetrics
 - **Alertmanager**: Handles alerts from VmAlert
+- **InfinityProxy**: act as middleware to use infinity datasource in grafana and manipulate auth header required to query Citrix API
 
 ## Core Components
 
@@ -102,6 +134,7 @@ Containerized Python application that collects metrics and configuration data fr
 #### Features
 - Collects metrics from Citrix Cloud API and stores them in VictoriaMetrics
 - Collects configuration data and stores it in PostgreSQL
+- Collect ConfigLogs and store to Victorialogs
 - Implements smart bearer token management with auto-refresh capabilities
 - Implements retry mechanism for API failures with exponential backoff
 - Supports API pagination to handle large datasets
@@ -116,7 +149,7 @@ Service that manages templates and configurations for client components such as 
 - uberAgent template processing with environment variable substitution
 - Telegraf template processing with environment variable substitution
 - Creation of configuration packages for distribution to clients
-- Retrieval of Citrix Site ID
+- Retrieval of Citrix Site ID (used by Infinity Plugin)
 
 ### Telegraf Builder
 
@@ -145,160 +178,35 @@ Service that builds a custom version of Telegraf for Windows platforms.
 
 ## Data Flows
 
-### 1. Citrix Cloud Integration
-   - **API Collection**
-     - Citrix Metrics Collector queries the Citrix Cloud API
-     - Uses OAuth2 authentication with automatic token refresh
-     - Implements rate limiting and backoff strategies
-   
-   - **Data Storage**
-     - Time-series metrics → VictoriaMetrics
-     - Configuration data → PostgreSQL
-     - Logs and events → VictoriaLogs
-   
-   - **Visualization**
-     - Real-time metrics in Grafana dashboards
-     - Configuration data in custom views
-     - Log analysis through Grafana Explore
-
-### 2. Client Agent Management
-   - **Template Processing**
-     - Sidecar service monitors for configuration changes
-     - Templates processed with environment variable substitution
-     - Automatic validation of configuration syntax
-   
-   - **Distribution**
-     - Configurations packaged into deployable archives
-     - NGINX serves files via HTTPS with client authentication
-     - Automatic version control and rollback capability
-   
-   - **Data Collection**
-     - Telegraf collects system and application metrics
-     - uberAgent gathers user session and application data
-     - Metrics sent back through secure channels
-   
-   - **Health Monitoring**
-     - Agent connectivity monitoring
-     - Configuration version tracking
-     - Automatic agent update notifications
-
-3. **uberAgent Data Flow**:
+1. **uberAgent Data Flow**:
    - uberAgent on VDAs collects application metrics and user session data
-   - Data is sent to FluentBit using an Elasticsearch-compatible format
+   - Data is sent to Nginx that cut /uberagent/ from the FluentBit using an Elasticsearch-compatible format
    - FluentBit transforms logs into metrics and forwards them to UberAgent VictoriaMetrics instance
    - Session logon/logoff metrics are also sent to ProxyTrace
    - ProxyTrace transforms these events into trace data for Jaeger
    - Grafana visualizes metrics from VictoriaMetrics
    - Jaeger provides visualization of session traces
 
-4. **Internal Monitoring Flow**:
+2. **Internal Monitoring Flow**:
    - Telegraf collects host and container metrics via Docker API
    - Metrics are stored in the Internal Monitoring VictoriaMetrics instance
    - VmAgent collects additional Prometheus metrics
    - Grafana dashboards display system health and performance
 
-5. **Log Processing**:
+2. **Log Processing**:
+   - telegraf collect Windows EventLog and fordward to Fluent Bit Log instance
    - Fluent Bit collects and processes logs
    - Logs are stored in VictoriaLogs
    - Grafana visualizes logs through dashboards
 
-6. **Tracing**:
-   - ProxyTrace collects and transforms tracing data
-   - Traces are sent to Jaeger
-   - Jaeger provides visualization and analysis of distributed traces
-
-## Flow Diagram
-
-The system architecture follows these primary data paths:
-
-```
-+-----------------------------------------------------------------------+
-|                              Citrix Cloud                             |
-+-----------------------------------------------------------------------+
-                                   ▲
-                                   │
-                                   │
-                      [flusso  ?  verso Citrix Cloud]
-                                   │
-+-----------------------------------------------------------------------+
-|                                                                       |
-|   +-------------+     +-----------+     +------------------+          |
-|   |     VDA     |     |   NGINX   |     |   FluentBit      |          |
-|   |             |     |  /bulk    |     |    Metrics       |          |
-|   |  uberAgent  |--1->| endpoint  |--1-> |   (→Grafana)     |          |
-|   +-------------+     +-----------+     +------------------+          |
-|        Telegraf           │   ▲                   │                   |
-|           │ (2)           │   │(1)                │(2)                |
-|           ▼               │   │                   ▼                   |
-|   +---------------+       │   │          +------------------+         |
-|   | FluentBit     |       │   └--------->| VictoriaMetrics  |         |
-|   |    Logs       |--1------------------>|   uberAgent      |         |
-|   +---------------+       │              +------------------+         |
-|                           │                      ▲                    |
-|                           │                      │(2)                 |
-|                           │                   +--------+              |
-|                           │                   | vmagent|              |
-|                           │            (2)-->+--------+              |
-|                           │                                             |
-|   +------------+     +----------+     +------------------+   +------+ |
-|   |   Traefik  |<--443--| Grafana |<--1-|   VictoriaLogs   |<--| Jaeger| |
-|   +------------+     +----------+ 2   +------------------+   +------+ |
-|        ▲    │(2) 1  │    │3   6│        │4    ▲                    │ |
-|        │    +------+    +------┘        │     │                    │ |
-|   Admin│                         4       |     │5                   │ |
-|       443                                  |     │                   │ |
-|                                               │     v                   │ |
-|                                               | +---------+           │ |
-|                                               | | Sidecar |           │ |
-|                                               | +---------+           │ |
-|                                               ▼                       │ |
-|                                           +---------+                │ |
-|                                           |ProxyTrace| (trace in/out)│ |
-|                                           +---------+                │ |
-|                                                                       |
-+-----------------------------------------------------------------------+
-|              Host & Containers Monitoring (MoM) – Telegraf            |
-|  +-------------+     +----------------+     +----------------------+  |
-|  | Docker API  |<--1-|   Telegraf     |--2->|   Host MountPoint   |  |
-|  +-------------+     +----------------+     +----------------------+  |
-+-----------------------------------------------------------------------+
-```
-
-1. **VDA Metrics Collection**:
-   - uberAgent on VDAs collects metrics (path 1)
-   - Data flows to FluentBit Metrics which formats and forwards metrics to VictoriaMetrics uberAgent instance (path 2)
-   - uberAgent session logs flow to FluentBit Logs (path 2)
-   - FluentBit forwards logs to VictoriaLogs (path 1)
-
-2. **Visualization and Monitoring**:
-   - Grafana reads from multiple data sources (paths 1, 2, 3, 4)
-   - VictoriaLogs provides log data to Grafana (path 1)
-   - VictoriaMetrics uberAgent provides metrics to Grafana (path 2)
-   - VictoriaMetrics Internal Monitor provides system metrics to Grafana (path 4)
-
-3. **Trace Processing**:
-   - ProxyTrace receives session events from FluentBit (path 1)
-   - ProxyTrace formats trace data for Jaeger (path 3)
-   - Jaeger stores and visualizes traces (path 5)
-
-4. **Internal Monitoring**:
-   - Telegraf collects host and container metrics via Docker API (path 1)
-   - VmAgent scrapes prometheus endpoints and sends to VictoriaMetrics Internal Monitor (path 2)
-   - System metrics are stored in VictoriaMetrics Internal Monitor (paths 4, 5)
-
-5. **Configuration and API**:
-   - NGINX serves configuration files generated by the Sidecar (path 1)
-   - Traefik provides external access to the admin UI (path 443)
-   - Telegraf captures Docker container metrics through the Docker API
-
-6. **Cloud Integration**:
-   - Components connect to Citrix Cloud for metrics collection and API access
-   - ProxyTrace sends data to Citrix Cloud for extended analytics
 
 ## Prerequisites
 
 - Docker and Docker Compose
-- Citrix Cloud API credentials (Client ID, Client Secret, Customer ID)
+- Citrix Cloud API credentials:
+  - **Client ID & Secret**: Generated from [Citrix Cloud Portal](https://developer-docs.citrix.com/en-us/citrix-cloud/citrix-cloud-api-overview/get-started-with-citrix-cloud-apis.html)
+  - **Customer ID**: Found in [Citrix Cloud Settings](https://support.citrix.com/s/article/CTX586350-how-to-identify-your-citrix-cloud-id?language=en_US)
+  - Tested and verified with Citrix Cloud DaaS (formerly Virtual Apps and Desktops Service)
 - (Optional) Proxy configuration if the environment is behind a corporate proxy
 
 ## Configuration
@@ -332,16 +240,12 @@ The system allows customization of data ingestion ports through environment vari
    - Used by NGINX to receive uberAgent metrics and logs
    - Must be configured in:
      - `.env` file
-     - NGINX configuration
-     - uberAgent output settings
 
 2. **`TELEGRAF_PORT`** (Default: 5170)
    - Controls the port for Telegraf event log ingestion
    - Used by Fluent Bit Logs to receive Windows Event Logs
    - Must be configured in:
      - `.env` file
-     - Telegraf output configuration
-     - Fluent Bit Logs input settings
 
 To modify these ports:
 
@@ -351,18 +255,9 @@ UA_INGRESSPORT=8088    # Custom port for uberAgent
 TELEGRAF_PORT=5170     # Custom port for Telegraf
 ```
 
-2. Verify NGINX configuration:
-```nginx
-# in nginx.conf
-server {
-    listen ${UA_INGRESSPORT} ssl;
-    # ...configuration continues...
-}
-```
-
-3. Update client configurations:
+2. Update client configurations:
    - Modify uberAgent output settings
-   - Update Telegraf HTTP output configuration
+   - Update Telegraf output configuration
    - Restart affected services
 
 Note: After changing ports, ensure:
@@ -378,35 +273,6 @@ Note: After changing ports, ensure:
   - `telegraf.d/`: Modularized additional configurations
 - `templates/uberAgent/`: Configuration templates for uberAgent
   - `VDA/`: Configurations for Virtual Delivery Agent
-
-## Initialization and Setup
-
-### Initial Configuration
-
-1. **Environment Setup**
-   ```bash
-   # Copy example environment file
-   cp env.example .env
-   
-   # Edit environment variables
-   nano .env
-   ```
-
-2. **Run Initialization Script**
-   ```bash
-   # Make script executable
-   chmod +x init_env.sh
-   
-   # Run initialization
-   ./init_env.sh
-   ```
-
-   The initialization script performs the following tasks:
-   - Creates necessary directories
-   - Generates SSL certificates
-   - Sets up database schemas
-   - Configures initial permissions
-   - Validates environment variables
 
 ### Key Environment Variables
 
@@ -454,18 +320,15 @@ NO_PROXY=localhost,127.0.0.1
 ### Data Ingestion Architecture
 
 #### 1. uberAgent Data Flow
-uberAgent sends metrics and logs to NGINX using the Elasticsearch Bulk API format:
+uberAgent sends metrics to NGINX using the Elasticsearch Bulk API format:
 - **Initial Ingestion**
-  - Endpoint: `https://your-domain.com/_bulk`
+  - Endpoint: `https://your-domain.com/uberagent/_bulk`
   - Port: Configurable via `UA_INGRESSPORT` (default: 8088)
-  - Authentication: Client certificate required
   - Format: Elasticsearch Bulk API compatible JSON
 
 - **NGINX Processing**
-  - Receives bulk data on `/_bulk` endpoint
-  - Validates client certificates
-  - Splits large payloads into manageable chunks
-  - Forwards to Fluent Bit Metrics
+  - Strip /uberagent
+  - Forwards to Fluent Bit Metrics (Fluent Bit can't create a custom endpoint)
 
 - **Fluent Bit Metrics Processing**
   - Receives data on port 8088
@@ -474,16 +337,6 @@ uberAgent sends metrics and logs to NGINX using the Elasticsearch Bulk API forma
     1. All metrics → VictoriaMetrics
     2. Logon/Logoff events → ProxyTrace (Jaeger)
 
-Example uberAgent configuration:
-```ini
-[Output]
-Type=HTTP
-URL=https://your-domain.com/_bulk
-Certificate=C:\Program Files\uberAgent\cert\client.crt
-PrivateKey=C:\Program Files\uberAgent\cert\client.key
-Format=JSON
-Port=${UA_INGRESSPORT}
-```
 
 #### 2. Telegraf Windows Event Log Collection
 Telegraf specifically handles Windows Event Logs:
@@ -497,18 +350,67 @@ Telegraf specifically handles Windows Event Logs:
   - Format: Windows Event Log entries
   - Transport: HTTP to Fluent Bit Logs
 
-Example Telegraf configuration:
-```toml
-[[inputs.eventlog]]
-  ## Windows event log names to monitor.
-  event_log = ["Application", "System", "Security"]
+#### 3. Telegraf Installation on Windows
 
-[[outputs.http]]
-  url = "http://fluentbit_logs:${TELEGRAF_PORT}"
-  data_format = "json"
-  [outputs.http.headers]
-    Content-Type = "application/json"
-```
+Telegraf can be installed on Windows machines to collect Windows Event Logs and forward them to the monitoring platform:
+
+1. **Download Telegraf Configuration**
+   - Access the telegraf configuration at `https://<your-server>/repo/telegraf/telegraf.zip`
+   - These configurations are automatically generated by the Sidecar service
+
+2. **Install Telegraf as a Windows Service**
+   ```powershell
+   # Create installation directory
+   New-Item -ItemType Directory -Path "C:\Program Files\Telegraf" -Force
+
+   # Download Telegraf binary from repo
+   Invoke-WebRequest -Uri "https://<your-server>/repo/telegraf/telegraf.exe" -OutFile "C:\Program Files\Telegraf\telegraf.exe"
+   # Download and extract Telegraf package
+   Invoke-WebRequest -Uri "https://<your-server>/repo/telegraf/telegraf.zip" -OutFile "C:\telegraf.zip"
+   Expand-Archive -Path "C:\telegraf.zip" -DestinationPath "C:\Program Files\Telegraf" -Force
+   Remove-Item -Path "C:\telegraf.zip" -Force
+   
+   # Create directory for additional configurations
+   New-Item -ItemType Directory -Path "C:\Program Files\Telegraf\logs" -Force
+   
+   # Install as a Windows service
+   & 'C:\Program Files\Telegraf\telegraf.exe' --service install --config "C:\Program Files\Telegraf\telegraf.conf" --config-directory "C:\Program Files\Telegraf\telegraf.d"
+   
+   # Start the service
+   Start-Service telegraf
+   ```
+
+3. **Verify Installation**
+   - Check service status:
+     ```powershell
+     Get-Service telegraf
+     ```
+   - View Telegraf logs:
+     ```powershell
+     Get-Content "C:\Program Files\Telegraf\logs\telegraf.log" -Tail 20
+     ```
+   - Verify data is being sent to the monitoring platform by checking VictoriaLogs 
+     through Grafana's "Windows Event Logs" dashboard
+
+4. **Uninstall Service (if needed)**
+   ```powershell
+   # Stop service
+   Stop-Service telegraf
+   
+   # Remove service
+   & 'C:\Program Files\Telegraf\telegraf.exe' --service uninstall
+   
+   # Optionally remove installation directory
+   Remove-Item -Path "C:\Program Files\Telegraf" -Recurse -Force
+   ```
+
+The telegraf.conf file contains all necessary connection information including:
+- Connection endpoint (using the SERVERNAMEORIP variable from .env)
+- Authentication details
+- Event log sources configuration
+- Data retention settings
+
+All these settings are automatically configured by the Sidecar service, which generates customized configurations for each environment.
 
 #### 3. Distributed Tracing with Jaeger
 The system automatically generates distributed traces for user sessions:
@@ -570,13 +472,50 @@ Key Features:
 
 ## Installation and Startup
 
-1. Clone the repository
-2. Create an `.env` file with the necessary environment variables
-3. Start the services with Docker Compose:
-
+1. Clone the repository:
 ```bash
-docker-compose up -d
+git clone https://github.com/andreaz86/CitrixOSMonitoringPlatform.git
+cd CitrixOSMonitoringPlatform
 ```
+
+2. Run the initialization script:
+```bash
+chmod +x init_env.sh
+./init_env.sh
+```
+
+The `init_env.sh` script is an interactive setup tool that:
+
+a. Guides you through setting up essential environment variables:
+  - **Citrix Cloud Credentials**:
+    - `CTX_CLIENT_ID`: Your Citrix Cloud API client ID
+    - `CTX_CLIENT_SECRET`: Your Citrix Cloud API client secret
+    - `CTX_CUSTOMER_ID`: Your Citrix Cloud customer ID
+
+  - **Grafana Configuration**:
+    - `GF_SECURITY_ADMIN_USER`: Admin username for Grafana interface
+    - `GF_SECURITY_ADMIN_PASSWORD`: Admin password for Grafana login
+    - `GF_SERVER_DOMAIN`: Domain name for Grafana (e.g., grafana.example.com)
+    - `GF_DATABASE_PASSWORD`: Internal database password for Grafana (can be auto-generated)
+
+  - **System Configuration**:
+    - `SERVERNAMEORIP`: Server hostname or IP (used for uberAgent and Telegraf configs)
+    - `POSTGRES_PASSWORD`: PostgreSQL admin password (used for pgAdmin access)
+    - `DB_SVCCITRIX_PWD`: Service account password for Citrix metrics database
+
+For passwords, the script offers to generate secure random values automatically or lets you input custom values.
+
+c. Additional Setup Tasks:
+  - Generates initial SSL certificates if not present
+  - Creates `.env` file from template if not exists
+  - Validates environment variables
+
+3. Start the services:
+```bash
+sudo docker compose up -d
+```
+
+Note: the Root Path will be created if not exists
 
 ## System Monitoring
 
@@ -586,21 +525,12 @@ Access Grafana to view dashboards and metrics:
 - URL: `https://<GF_SERVER_DOMAIN>`
 - Default credentials: configured in `.env`
 
-### Traefik Dashboard
-
-Access the Traefik dashboard to monitor the reverse proxy:
-- URL: `http://<your-server>:8084`
 
 ### Jaeger UI
 
 Access the Jaeger UI to analyze distributed traces:
 - URL: `http://<your-server>:16686`
 
-### Health Check
-
-The Citrix Metrics Collector provides a health check endpoint:
-- URL: `http://localhost:8000/health`
-- Response: Application status, last successful metrics run, any errors
 
 ## Data Structure
 
@@ -657,12 +587,6 @@ The Citrix Metrics Collector provides a health check endpoint:
    docker stats
    ```
 
-2. **Service Endpoints**
-   - Grafana: `https://<GF_SERVER_DOMAIN>`
-   - NGINX metrics: `http://localhost/nginx_status`
-   - Health API: `http://localhost:8000/health`
-   - Traefik Dashboard: `http://localhost:8084`
-
 ### Common Issues
 
 1. **Container Startup Problems**
@@ -675,10 +599,8 @@ The Citrix Metrics Collector provides a health check endpoint:
    - **uberAgent**
      ```bash
      # Check NGINX access logs
-     docker logs nginx | grep POST
+     docker logs nginx 
      
-     # Verify SSL certificates
-     openssl verify /path/to/client.crt
      ```
    
    - **Telegraf**
@@ -746,7 +668,7 @@ Key log locations:
 Common log commands:
 ```bash
 # Tail all container logs
-docker-compose logs -f
+docker compose logs -f
 
 # Check specific container logs
 docker logs -f <container_name>
@@ -772,13 +694,13 @@ docker logs --tail 100 <container_name>
 2. **Reset System**
    ```bash
    # Stop all containers
-   docker-compose down
+   docker compose down
    
    # Clean volumes (if needed)
-   docker-compose down -v
+   docker compose down -v
    
    # Rebuild and restart
-   docker-compose up -d --build
+   docker compose up -d
    ```
 
 3. **Restore Data**
@@ -787,6 +709,3 @@ docker logs --tail 100 <container_name>
    cat backup.sql | docker exec -i postgresql psql -U svc_citrix_metrics citrix_metrics
    ```
 
-## License
-
-This project is distributed under a proprietary license. All rights reserved.

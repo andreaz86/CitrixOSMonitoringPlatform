@@ -41,42 +41,46 @@ The Sidecar Service is an essential component of the architecture that manages t
 | `UA_INGRESSPORT` | | uberAgent ingress port |
 | `TELEGRAF_PORT` | | Telegraf port |
 
-### System Directories
+### Directory Mapping
 
-| Path | Description |
-|------|-------------|
-| `/etc/certs` | SSL certificates directory |
-| `/etc/templates/uberAgent` | uberAgent templates |
-| `/etc/templates/telegraf` | Telegraf templates |
-| `/etc/uaConfigs` | Configuration output directory |
-| `/envs/env.list` | Environment variables file |
+The sidecar service maps host directories to specific locations inside the container:
 
-## Deployment
+| Host Path | Container Path | Description |
+|-----------|---------------|-------------|
+| `./certs/` | `/etc/certs` | SSL certificates directory |
+| `./templates/` | `/etc/templates` | Base templates directory |
+| `./uaConfigs/` | `/etc/uaConfigs` | Configuration output directory |
+| `./.env` | `/envs/env.list` | Environment variables file |
 
-The service is configured in docker-compose.yaml as follows:
-
-```yaml
-sidecar:
-  build:
-    context: ./sidecar
-  image: registry.azcloud.ovh/sidecar:latest
-  container_name: sidecar
-  volumes:
-    - ./certs:/etc/certs
-    - ./templates/:/etc/templates:ro
-    - ./uaConfigs:/etc/uaConfigs
-    - ./.env:/envs/env.list
-  environment:
-    - CERT_FQDN=${GF_SERVER_DOMAIN}
-    - SERVERNAMEORIP=${SERVERNAMEORIP}
-    - UA_INGRESSPORT=${UA_INGRESSPORT}
-    - TELEGRAF_PORT=${TELEGRAF_PORT}
-    - VERBOSE=3
-    - HTTP_PROXY=${HTTP_PROXY}
-    - HTTPS_PROXY=${HTTP_PROXY}
-  networks:
-    - ctxmon
+#### Template Directory Structure (Host)
 ```
+./templates/
+├── uberAgent/
+│   ├── VDA/              # Virtual Desktop Agent configs
+│   ├── Physical/         # Physical workstation configs
+│   └── Servers/         # Server configs
+└── telegraf/
+    ├── telegraf.conf    # Main Telegraf config
+    └── telegraf.d/      # Additional Telegraf configs
+```
+
+#### Template Directory Structure (Container)
+```
+/etc/templates/
+├── uberAgent/           # Mounted from ./templates/uberAgent
+│   ├── VDA/
+│   ├── Physical/
+│   └── Servers/
+└── telegraf/           # Mounted from ./templates/telegraf
+    ├── telegraf.conf
+    └── telegraf.d/
+```
+
+This mapping ensures that:
+- Templates are maintained in the host's `./templates/` directory
+- Processed configurations are output to the host's `./uaConfigs/` directory
+- SSL certificates are stored in the host's `./certs/` directory
+- All paths are consistently referenced in documentation and configuration
 
 ## Operation
 
@@ -92,9 +96,31 @@ sidecar:
 ### Template Processing
 
 #### uberAgent
-- Scan subdirectories in `/etc/templates/uberAgent`
-- Substitute environment variables in files
-- Create `.uAConfig` archives for each configuration
+- Scan all subdirectories in `/etc/templates/uberAgent`
+- Each subdirectory represents a different configuration scenario (e.g., VDA, Physical, Servers)
+- Process templates independently for each subdirectory
+- Substitute environment variables in all files within each subdirectory
+- Create separate `.uAConfig` archives for each configuration type
+
+Example directory structure:
+```
+/etc/templates/uberAgent/
+├── VDA/                    # Virtual Desktop configuration
+│   ├── uberAgent.conf
+│   └── uberAgent-filter.conf
+├── Physical/              # Physical workstation configuration
+│   ├── uberAgent.conf
+│   └── uberAgent-filter.conf
+└── Servers/              # Server configuration
+    ├── uberAgent.conf
+    └── uberAgent-filter.conf
+```
+
+This structure allows:
+- Different configurations for different use cases
+- Independent template processing for each scenario
+- Customized filters and settings per environment type
+- Flexible deployment options
 
 #### Telegraf
 - Process main `telegraf.conf` file

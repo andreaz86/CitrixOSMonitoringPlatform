@@ -13,7 +13,6 @@ services:
       - ./fluentbit_metrics/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
       - ./fluentbit_metrics/parsers.conf:/fluent-bit/etc/parsers.conf:ro
       - ./fluentbit_metrics/scripts/transform.lua:/fluent-bit/etc/transform.lua:ro
-      - ./fluentbit_metrics/logs/:/fluent-bit/logs/
       - ${ROOT_PATH}/fluentbit_metrics:/var/log/flb-storage/
     # ports:
     #   - "2020:2020"  # Porta per Splunk HEC input
