@@ -1,0 +1,42 @@
+global:
+  scrape_interval:     15s
+
+scrape_configs:
+
+  - job_name: 'vmagent'
+    static_configs:
+    - targets: ['vmagent:8429']
+
+  - job_name: 'vmalert'
+    static_configs:
+      - targets: ['vmalert:8880']
+      
+  - job_name: 'uberAgent'
+    static_configs:
+      - targets: ['victoriametrics:8428']
+
+  - job_name: 'victoriametrics_internal'
+    static_configs:
+      - targets: ['victoriametrics_internal:8428']
+
+  - job_name: 'victorialogs'
+    static_configs:
+      - targets: ['victorialogs:9428']
+
+  - job_name: 'fluentbit-metrics'
+    static_configs:
+      - targets: ['fluentbit-metrics:2020/api/v2/metrics/prometheus']
+
+  - job_name: 'fluentbit-logs'
+    static_configs:
+      - targets: ['fluentbit-logs:2020/api/v2/metrics/prometheus']
+
+  - job_name: 'proxytrace'
+    static_configs:
+      - targets: ['proxytrace:8000']
+      
+  - job_name: 'citrix-metrics'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['citrix-metrics:8000']
+    metrics_path: '/metrics'

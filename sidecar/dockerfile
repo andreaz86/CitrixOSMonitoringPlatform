@@ -1,0 +1,19 @@
+# Dockerfile.sidecar
+FROM python:3.11-slim
+
+# install OpenSSL for cert generation and gettext-base for envsubst
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      openssl \
+      gettext-base \
+      zip \
+      curl \
+      jq \
+ && rm -rf /var/lib/apt/lists/*
+
+# copy entrypoint script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+

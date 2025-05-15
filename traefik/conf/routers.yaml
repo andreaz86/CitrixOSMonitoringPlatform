@@ -1,0 +1,39 @@
+http:
+  routers:
+    # — router specifico per il dominio (se vuoi ancora Usare FQDN)
+
+
+    # repo_http:
+    repo_http:
+      rule: PathPrefix(`/repo`)
+      entryPoints:
+        - web
+      service: repo
+      priority: 20   
+      middlewares:
+        - force-https
+
+    repo_https:
+      rule: PathPrefix(`/repo`)
+      entryPoints:
+        - websecure
+      service: repo
+      priority: 20   
+
+
+    grafana_http:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      service: grafana
+      priority: 10 
+      middlewares:
+        - force-https
+
+    grafana_https:
+      rule: PathPrefix(`/`)
+      priority: 10 
+      entryPoints:
+        - websecure
+      service: grafana
+

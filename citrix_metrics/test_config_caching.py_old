@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+import sys
+import os
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Add the app directory to the Python path so we can import our modules
+app_path = os.path.join(os.path.dirname(__file__), 'app')
+sys.path.append(app_path)
+print(f"Added path: {app_path}")
+
+print(f"Available modules in app path: {os.listdir(app_path)}")
+print(f"Utils directory contains: {os.listdir(os.path.join(app_path, 'utils'))}")
+
+try:
+    # Import the config module and show its attributes
+    from utils import config
+    print(f"Config module: {dir(config)}")
+
+    # Check if load_queries_config exists
+    if hasattr(config, 'load_queries_config'):
+        print("load_queries_config function exists in config module")
+    else:
+        print("ERROR: load_queries_config function not found in config module")
+        sys.exit(1)
+
+    # Initialize logging
+    print("\nTesting queries configuration caching...")
+
+    # Load config multiple times and observe the logging behavior
+    print("Loading queries config - first time")
+    result1 = config.load_queries_config()
+    print("Loading queries config - second time")
+    result2 = config.load_queries_config()
+    print("Loading queries config - third time") 
+    result3 = config.load_queries_config()
+
+    print("\nResults:")
+    print(f"First load:  {'Successful' if result1 is not None else 'Failed'}")
+    print(f"Second load: {'Successful' if result2 is not None else 'Failed'}")
+    print(f"Third load: {'Successful' if result3 is not None else 'Failed'}")
+    print(f"Cache works: {result1 is result2 is result3}")
+
+    # Check what's in the cache
+    if hasattr(config, '_queries_config_cache'):
+        print(f"Cache variable exists: {config._queries_config_cache is not None}")
+
+    print("\nDone!")
+except Exception as e:
+    print(f"Error: {type(e).__name__}: {e}")
+    import traceback
+    traceback.print_exc()

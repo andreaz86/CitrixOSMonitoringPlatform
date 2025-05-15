@@ -1,0 +1,65 @@
+FROM golang:latest
+
+# Install tools
+RUN apt-get update && \
+    apt-get install -y git make && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /workspace
+
+# Create directories
+RUN mkdir -p /telegraf_templates
+RUN mkdir -p /output
+
+# Clone Telegraf source
+RUN git clone --branch master --single-branch https://github.com/influxdata/telegraf.git
+RUN cd /workspace/telegraf && \
+    make build_tools
+
+# Environment for Windows build (will be used by the entrypoint script)
+ENV TARGET_GOOS=windows
+ENV TARGET_GOARCH=amd64
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+if [ -n "$HTTP_PROXY" ]; then\n\
+  echo "Proxy rilevato: configurazione ambiente..."\n\
+  export http_proxy="$HTTP_PROXY"\n\
+  export https_proxy="$HTTPS_PROXY"\n\
+  export no_proxy="$NO_PROXY"\n\
+
+  # (opzionale) rendi il proxy permanente per git\n\
+  git config --global http.proxy "$HTTP_PROXY"\n\
+  git config --global https.proxy "$HTTPS_PROXY"\n\
+fi\n\
+echo "Starting Telegraf custom build..."\n\
+\n\
+# Check if telegraf.exe already exists in the output directory\n\
+if [ -f "/output/telegraf.exe" ]; then\n\
+  echo "telegraf.exe already exists in /output directory. Skipping build."\n\
+  exit 0\n\
+fi\n\
+\n\
+if [ -d "/telegraf_templates" ] && [ -f "/telegraf_templates/telegraf.conf" ]; then\n\
+  echo "Found telegraf.conf in mounted volume"\n\
+  cd /workspace/telegraf && \\\n\
+  # Build the custom_builder for the host OS first\n\
+  go build -o ./custom_builder ./tools/custom_builder/ && \\\n\
+  # Execute the build with cross-compilation settings\n\
+  GOOS=${TARGET_GOOS} GOARCH=${TARGET_GOARCH} \\\n\
+  ./custom_builder \\\n\
+    --config /telegraf_templates/telegraf.conf \\\n\
+    --config-dir /telegraf_templates/telegraf.d \\\n\
+  && echo "Build complete. Moving telegraf.exe to output directory." \\\n\
+  && mv /workspace/telegraf/telegraf.exe /output/ \\\n\
+  && echo "Build complete. Output saved to /output directory."\n\
+else\n\
+  echo "Error: telegraf.conf not found in /telegraf_templates"\n\
+  exit 1\n\
+fi\n' > /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh
+
+# Set entrypoint
+ENTRYPOINT ["/entrypoint.sh"]

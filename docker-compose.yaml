@@ -1,0 +1,518 @@
+networks:
+  ctxmon:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.55.0/24
+
+services:
+  fluentbit-metrics:
+    image: cr.fluentbit.io/fluent/fluent-bit:${FLUENTBIT_VERSION}
+    container_name: fluentbit-metrics
+    volumes:
+      - ./fluentbit_metrics/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./fluentbit_metrics/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - ./fluentbit_metrics/scripts/transform.lua:/fluent-bit/etc/transform.lua:ro
+      - ./fluentbit_metrics/logs/:/fluent-bit/logs/
+      - ${ROOT_PATH}/fluentbit_metrics:/var/log/flb-storage/
+    # ports:
+    #   - "2020:2020"  # Porta per Splunk HEC input
+    networks:
+    - ctxmon
+    restart: unless-stopped
+
+  fluentbit-logs:
+    image: cr.fluentbit.io/fluent/fluent-bit:${FLUENTBIT_VERSION}
+    container_name: fluentbit-logs
+    volumes:
+      - ./fluentbit_logs/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ${ROOT_PATH}/fluentbit_logs:/var/log/flb-storage/
+    ports:
+      - ${TELEGRAF_PORT}:5170
+    networks:
+    - ctxmon
+    restart: unless-stopped
+
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    depends_on:
+      - fluentbit-metrics
+      - grafana
+      - sidecar
+      - telegraf_builder
+    ports:
+      - ${UA_INGRESSPORT}:8088  # To FluentBit ElasticSearch input 
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro  
+      - ./certs:/etc/nginx/certs
+      - ./uaConfigs:/usr/share/nginx/html/repo:ro
+    networks:
+      - ctxmon
+    restart: unless-stopped
+
+
+
+  grafana:
+    depends_on:
+        - postgresql
+        - victoriametrics
+        - sidecar
+    image: grafana/grafana:${GF_VERSION}
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_SERVER_DOMAIN=${GF_SERVER_DOMAIN}
+      - GF_SERVER_ROOT_URL=https://${GF_SERVER_DOMAIN}
+      - GF_INSTALL_PLUGINS= volkovlabs-grapi-datasource,victoriametrics-logs-datasource,victoriametrics-metrics-datasource,yesoreyeram-infinity-datasource,volkovlabs-variable-panel,volkovlabs-table-panel
+      - GF_DATABASE_TYPE=postgres
+      - GF_DATABASE_HOST=postgresql:5432
+      - GF_DATABASE_NAME=grafana
+      - GF_DATABASE_USER=grafana
+      - GF_DATABASE_PASSWORD=${GF_DATABASE_PASSWORD}
+      - GF_DATABASE_SSL_MODE=disable
+      - DB_SVCCITRIX_PWD=${DB_SVCCITRIX_PWD}
+      ## Citrix Variables for infinity datasource
+      - CTX_CLIENT_ID=${CTX_CLIENT_ID}
+      - CTX_CLIENT_SECRET=${CTX_CLIENT_SECRET}
+      - CTX_CUSTOMER_ID=${CTX_CUSTOMER_ID}
+      - CTX_SITE_ID=${CTX_SITE_ID}
+      - HTTP_PROXY=${HTTP_PROXY}
+      - HTTPS_PROXY=${HTTP_PROXY}
+      - NO_PROXY=localhost,127.0.0.1,victoriametrics,victorialogs,192.168.51.*,jaeger,alertmanager"
+      - GF_FEATURE_TOGGLES_ENABLE=sqlExpressions
+    volumes:
+      - ./grafana/provisioning/datasources/grafana_datasources.yml:/etc/grafana/provisioning/datasources/datasources.yaml
+      #- ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana/provisioning/dashboards/dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml
+      - /etc/localtime:/etc/localtime:ro
+      - ./grafana/provisioning/dashboards/internal:/var/lib/grafana/dashboards/internal
+      - ./grafana/provisioning/dashboards/uberAgent:/var/lib/grafana/dashboards/uberAgent
+    networks:
+        - ctxmon
+    restart: unless-stopped
+
+  vmagent:
+    container_name: vmagent
+    image: victoriametrics/vmagent:${VICTORIAMETRICS_V}
+    depends_on:
+      - "victoriametrics"
+    ports:
+      - 8429:8429
+    volumes:
+      - ${ROOT_PATH}/victoriametrics/vmagentdata:/vmagentdata
+      - ./vmagent/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+      - "--remoteWrite.url=http://victoriametrics_internal:8428/api/v1/write"
+    networks:
+      - ctxmon
+    restart: always
+
+  victoriametrics:
+    container_name: victoriametrics
+    image: victoriametrics/victoria-metrics:${VICTORIAMETRICS_V}
+    volumes:
+      - ${ROOT_PATH}/victoriametrics/victoriametrics_data:/storage
+      #- ./victoriametrics/relabel_config.yml:/etc/vm/relabel_config.yml:ro
+    command:
+      - "--storageDataPath=/storage"
+      - "--httpListenAddr=:8428"
+      - "--vmalert.proxyURL=http://vmalert:8880"
+      - "--retentionPeriod=${UA_DATARETENTION}"
+      #- "--relabelConfig=/etc/vm/relabel_config.yml"
+      - "--usePromCompatibleNaming"
+      - "--influxListenAddr=:8089"
+    networks:
+      - ctxmon
+    restart: always
+    ports:
+    #   - 8089:8089/udp
+       - 8428:8428
+
+  victoriametrics_internal:
+    container_name: victoriametrics_internal
+    image: victoriametrics/victoria-metrics:${VICTORIAMETRICS_V}
+    volumes:
+      - ${ROOT_PATH}/victoriametrics_internal/victoriametrics_data:/storage
+      #- ./victoriametrics/relabel_config.yml:/etc/vm/relabel_config.yml:ro
+    command:
+      - "--storageDataPath=/storage"
+      - "--httpListenAddr=:8428"
+      - "--vmalert.proxyURL=http://vmalert:8880"
+      - "--retentionPeriod=${IM_DATARETENTION}"
+      #- "--relabelConfig=/etc/vm/relabel_config.yml"
+      - "--usePromCompatibleNaming"
+      - "--influxListenAddr=:8089"
+    networks:
+      - ctxmon
+    restart: always
+
+
+  vmalert:
+    container_name: vmalert
+    image: victoriametrics/vmalert:${VICTORIAMETRICS_V}
+    depends_on:
+      - "victoriametrics"
+      - "alertmanager"
+    ports:
+      - 8880:8880
+    volumes:
+      - ./vmalert/alerts.yml:/etc/alerts/alerts.yml
+      - ./vmalert/alerts-health.yml:/etc/alerts/alerts-health.yml
+      - ./vmalert/alerts-vmagent.yml:/etc/alerts/alerts-vmagent.yml
+      - ./vmalert/alerts-vmalert.yml:/etc/alerts/alerts-vmalert.yml
+      - ./vmalert/alerts-vlogs.yml:/etc/alerts/alerts-vlogs.yml
+    command:
+      - "--datasource.url=http://victoriametrics:8428/"
+      - "--remoteRead.url=http://victoriametrics:8428/"
+      - "--remoteWrite.url=http://victoriametrics:8428/"
+      - "--notifier.url=http://alertmanager:9093/"
+      - "--rule=/etc/alerts/*.yml"
+      # display source of alerts in grafana
+      - "--external.url=http://${GF_SERVER_DOMAIN}" #grafana outside container
+      # when copypaste the line be aware of '$$' for escaping in '$expr'
+      - '--external.alert.source=explore?orgId=1&left={"datasource":"VictoriaMetrics","queries":[{"expr":{{$$expr|jsonEscape|queryEscape}},"refId":"A"}],"range":{"from":"now-1h","to":"now"}}'
+    networks:
+      - ctxmon
+    restart: always
+
+  alertmanager:
+    container_name: alertmanager
+    image: prom/alertmanager:latest
+    volumes:
+      - ./alertmanager/alertmanager.yml:/config/alertmanager.yml
+    command:
+      - "--config.file=/config/alertmanager.yml"
+    # ports:
+    #   - 9093:9093
+    networks:
+      - ctxmon
+    restart: always
+
+  postgresql:
+    image: postgres:${PG_VERSION}
+    #command: ["postgres", "-c", "config_file=/etc/postgresql.conf"]
+    #command: postgres -c ssl=on -c ssl_cert_file=/etc/certs/service.crt -c ssl_key_file=/etc/certs/service.key
+    container_name: postgresql
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=grafana
+      - GF_DATABASE_PASSWORD=${GF_DATABASE_PASSWORD}
+      - DB_SVCCITRIX_PWD=${DB_SVCCITRIX_PWD}
+    volumes:
+      - ${ROOT_PATH}/postgresql:/var/lib/postgresql/data
+      - ./postgresql/init-user-db.sh:/docker-entrypoint-initdb.d/init-user-db.sh
+      #- ./sidecar/certs:/etc/certs
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - ctxmon
+
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
+      - PGADMIN_LISTEN_PORT=5433
+    volumes:
+      #- ${ROOT_PATH}/pgadmin:/var/lib/pgadmin
+      - ${ROOT_PATH}/pgadmin/backup:/backup
+      - ./pgadmin/docker_pgadmin_servers.json:/pgadmin4/servers.json
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - ctxmon
+    ports:
+      - 5433:5433
+
+  # telegraf:
+  #   build: ./telegraf
+  #   container_name: telegraf
+  #   depends_on:
+  #     - sidecar
+  #     - postgresql
+  #     - victoriametrics
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+  #     - /etc/localtime:/etc/localtime:ro
+  #     - ./telegraf/scripts:/scripts
+  #     - ${ROOT_PATH}/telegraf:/logs
+  #     - ./telegraf/db_ip:/db_ip
+  #     - /:/hostfs:ro
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   environment:
+  #     - HOST_ETC=/hostfs/etc
+  #     - HOST_PROC=/hostfs/proc
+  #     - HOST_SYS=/hostfs/sys
+  #     - HOST_VAR=/hostfs/var
+  #     - HOST_RUN=/hostfs/run
+  #     - HOST_MOUNT_PREFIX=/hostfs
+  #     - CTX_CLIENT_ID=${CTX_CLIENT_ID}
+  #     - CTX_CLIENT_SECRET=${CTX_CLIENT_SECRET}
+  #     - CTX_CUSTOMER_ID=${CTX_CUSTOMER_ID}
+  #     - PG_TELEGRAF_PWD=${PG_TELEGRAF_PWD}
+  #   networks:
+  #     - ctxmon
+  #   user: ${USERID}:996
+  #   privileged: false
+
+ 
+
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:${VICTORIALOGS_V}
+    container_name: victorialogs
+    command: 
+      - -retentionPeriod=${VL_DATARETENTION}
+    ports:
+      - 9428:9428
+    volumes:
+      - ${ROOT_PATH}/victorialogs:/victoria-logs-data
+    networks:
+      - ctxmon
+    restart: unless-stopped
+
+
+  telegraf:
+    image: telegraf:latest
+    user: telegraf:996
+    container_name: telegraf
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /:/hostfs:ro
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - ctxmon
+    restart: unless-stopped
+    environment:
+      - HOST_ETC=/hostfs/etc
+      - HOST_PROC=/hostfs/proc
+      - HOST_SYS=/hostfs/sys
+      - HOST_VAR=/hostfs/var
+      - HOST_RUN=/hostfs/run
+      - HOST_MOUNT_PREFIX=/hostfs
+    privileged: false
+    # ports:
+    #   - 8086:8086
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    user: root:root
+    command: ["--badger.span-store-ttl=72h"]
+    container_name: jaeger
+    ports:
+      - "16686:16686"    # Interfaccia web
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=badger
+      - BADGER_EPHEMERAL=false     
+      - BADGER_DIRECTORY_VALUE=/badger/data
+      - BADGER_DIRECTORY_KEY=/badger/key
+    volumes:
+      - ${ROOT_PATH}/jaeger:/badger
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    networks:
+      - ctxmon
+
+  proxytrace:
+    build:
+      context: ./proxytrace
+    container_name: proxytrace
+    image: andreaz86/proxytrace:latest
+    volumes:
+      - ./proxytrace/app.py:/app/app.py
+    environment:
+      - OTLP_COLLECTOR_ADDR=http://jaeger:4318
+      - DEBUG_MODE=0
+    # ports:
+    #   - "5000:5000"
+    #   - 8000:8000
+    networks:
+      - ctxmon
+    restart: unless-stopped
+
+
+  traefik:
+    image: traefik:${TRAEFIK_VERSION}
+    container_name: traefik
+    command: 
+      - --configFile=/conf/traefik.yaml
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8084:8080"
+      - "1443:1443/tcp"
+      - "1443:1443/udp"
+    environment:
+      - GF_SERVER_DOMAIN=${GF_SERVER_DOMAIN}
+    volumes:
+      - "${ROOT_PATH}/letsencrypt:/letsencrypt"
+      - ${ROOT_PATH}/traefik/logs:/var/log/traefik
+      - ./traefik/conf:/conf
+      - ./certs:/certs
+    networks:
+      - ctxmon
+    restart: unless-stopped
+
+
+  sidecar:
+    build:
+      context: ./sidecar
+    image: andreaz86/sidecar:latest
+    container_name: sidecar
+    volumes:
+      - ./certs:/etc/certs
+      - ./templates/:/etc/templates:ro
+      - ./uaConfigs:/etc/uaConfigs
+      - ./.env:/envs/env.list
+      #- ./sidecar/entrypoint.sh:/usr/local/bin/entrypoint.sh
+    environment:
+      # Only the FQDN for the certificate’s CN
+      - CERT_FQDN=${GF_SERVER_DOMAIN}
+      - SERVERNAMEORIP=${SERVERNAMEORIP}
+      - UA_INGRESSPORT=${UA_INGRESSPORT}
+      - TELEGRAF_PORT=${TELEGRAF_PORT}
+      - VERBOSE=3
+      - HTTP_PROXY=${HTTP_PROXY}
+      - HTTPS_PROXY=${HTTP_PROXY}
+    networks:
+      - ctxmon
+
+
+  telegraf_builder:
+    build:
+      context: ./telegraf_builder
+      dockerfile: Dockerfile
+    image: andreaz86/telegraf_builder:latest
+    depends_on:
+      - sidecar
+    volumes:
+      - ./uaConfigs/telegraf:/output
+      - ./templates/telegraf:/telegraf_templates
+    container_name: telegraf_custom_builder
+    environment:
+      - HTTP_PROXY=${HTTP_PROXY}
+      - HTTPS_PROXY=${HTTP_PROXY}
+    networks:
+      - ctxmon
+
+  citrix_metrics:
+    build:
+      context: ./citrix_metrics
+      dockerfile: Dockerfile
+    #image: registry.azcloud.ovh/citrix_metrics:latest
+    image: andreaz86/citrix_metrics:latest
+    container_name: citrix-metrics
+    restart: unless-stopped
+    volumes:
+      - ./citrix_metrics/app:/app/app  # Monta tutta la directory dell'applicazione
+      - ./citrix_metrics/requirements.txt:/app/requirements.txt  # Monta il file delle dipendenze
+      - ${ROOT_PATH}/citrix_metrics/data:/app/data  # Persistenza dei dati
+      - ./citrix_metrics/run.py:/app/run.py  # Entry point dell'applicazione
+      - ./citrix_metrics/config:/etc/citrix_metrics  # File di configurazione
+    ports:
+      - "5678:5678"  # Port for remote debugging
+      - 8001:8000
+    depends_on:
+      - postgresql
+      - victoriametrics
+    environment:
+      # Citrix Cloud API credentials
+      - CITRIX_CLIENT_ID=${CTX_CLIENT_ID}
+      - CITRIX_CLIENT_SECRET=${CTX_CLIENT_SECRET}
+      - CITRIX_CUSTOMER_ID=${CTX_CUSTOMER_ID}
+      - CITRIX_API_BASE_URL=${CTX_API_BASE_URL:-https://api.cloud.com}
+      
+      # VictoriaMetrics configuration (for metrics)
+      - METRICS_ENDPOINT=http://victoriametrics:8428
+      
+      # PostgreSQL configuration
+      - POSTGRES_HOST=postgresql
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=citrix_metrics
+      - POSTGRES_USER=svc_citrix_metrics
+      - POSTGRES_PASSWORD=${DB_SVCCITRIX_PWD}
+      
+      # Collection intervals (in seconds)
+      - METRICS_COLLECTION_INTERVAL=${METRICS_COLLECTION_INTERVAL:-300}
+      - CONFIG_COLLECTION_INTERVAL=${CONFIG_COLLECTION_INTERVAL:-3600}
+      
+      # Retry configuration
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - RETRY_BACKOFF_FACTOR=${RETRY_BACKOFF_FACTOR:-0.5}
+      - RETRY_MAX_WAIT=${RETRY_MAX_WAIT:-30}
+      
+      # Debug mode flag
+      - DEBUG=true
+      
+      # Proxy settings
+      - HTTP_PROXY=${HTTP_PROXY}
+      - HTTPS_PROXY=${HTTP_PROXY}
+      
+      # Configurazione dei file di config
+      - API_CONFIG_PATH=/etc/citrix_metrics/api_config.yaml
+      - QUERIES_CONFIG_PATH=/etc/citrix_metrics/queries_config.yaml
+      
+      # Abilita/disabilita l'esposizione delle metriche Prometheus
+      - ENABLE_PROMETHEUS_METRICS=${ENABLE_PROMETHEUS_METRICS:-true}
+    
+    # Command to run with debugger enabled
+    command: python -m debugpy --listen 0.0.0.0:5678 --wait-for-client run.py
+    networks:
+      - ctxmon
+
+
+  infinity_proxy:
+    build: ./infinity_proxy
+    image: andreaz86/infinity_proxy:latest
+    container_name: infinity_proxy
+    hostname: citrixapi
+    environment:
+      - DEFAULT_TARGET_HOST=https://api.cloud.com
+      - TARGET_HOST=api.cloud.com
+      - HTTP_PROXY=${HTTP_PROXY}
+      - DEBUG=false
+      - JAEGER_ENABLED=true    # Attiva il tracciamento con Jaeger
+      - JAEGER_HOST=jaeger     # Hostname del servizio Jaeger nel docker-compose
+      - JAEGER_PORT=4317       # Porta OTLP/gRPC di Jaeger
+    depends_on:
+      - jaeger
+    restart: unless-stopped
+    networks:
+      - ctxmon
+
+
+  # session_api:
+  #   build:
+  #     context: ./session_api
+  #     dockerfile: Dockerfile
+  #   container_name: session-api
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./session_api/app:/app/app
+  #   ports:
+  #     - "8002:8000"  # Espone la porta 8002 all'esterno
+  #   depends_on:
+  #     - victoriametrics
+  #   environment:
+  #     # Victoria Metrics configuration
+  #     - VICTORIA_METRICS_URL=http://victoriametrics:8428
+  #     # Debug mode flag
+  #     - DEBUG=true
+  #     # Server configuration
+  #     - HOST=0.0.0.0
+  #     - PORT=8000
+  #     - LOG_LEVEL=INFO
+  #   networks:
+  #     - ctxmon

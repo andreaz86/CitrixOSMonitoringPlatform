@@ -1,0 +1,118 @@
+# Configurazione delle query da eseguire e dei tipi di dati
+# Questo file definisce quali API interrogare, come mappare i risultati e i tipi di dati per ogni campo
+
+# Common fields that apply to all entities
+common_fields:
+  Id: "VARCHAR(255)"
+  Name: "VARCHAR(255)"
+  collected_at: "TIMESTAMP"
+
+# Field type defaults by naming convention
+# Used when a specific type is not defined for a field
+field_type_defaults:
+  # Fields with these prefixes or suffixes will be assigned these types
+  prefixes:
+    is_: "BOOLEAN"
+    has_: "BOOLEAN"
+    count_: "INTEGER"
+  suffixes:
+    _id: "VARCHAR(255)"
+    _count: "INTEGER"
+    _date: "TIMESTAMP"
+    _time: "TIMESTAMP"
+    _type: "INTEGER"
+    _state: "INTEGER"
+    _mode: "INTEGER"
+    _status: "INTEGER"
+  # Default type for fields not matched by other rules
+  default: "VARCHAR(255)"
+
+# Metriche da raccogliere e archiviare in VictoriaMetrics
+metrics:
+  - api_name: "load_indexes"                 # Nome dell'API da interrogare (deve corrispondere a api_config.yaml)
+    measurement_name: "citrix_load_index"    # Nome della misura in VictoriaMetrics
+    tag_mappings:                           # Mappatura dei campi di risposta API ai tag di VictoriaMetrics
+      # Percorso nidificato: Machine.Id
+      host: ["Machine", "Name"]
+    field_mappings:                         # Mappatura dei campi di risposta API ai campi di VictoriaMetrics
+      EffectiveLoadIndex: "EffectiveLoadIndex"
+    timestamp_field: "CreatedDate" 
+    
+
+  - api_name: "sessionfailure"
+    measurement_name: "citrix_session_failure" # Nome della misura in VictoriaMetrics
+    tag_mappings:
+      host: ["Machine", "Name"]
+      user: ["User", "UserName"]
+      SessionKey: ["SessionKey"]
+      id: ["Id"]
+      client_ip: ["Session", "CurrentConnection", "ClientAddress"]
+      client_public_ip: ["Session", "CurrentConnection", "ClientPublicIP"]
+      client_isp: ["Session", "CurrentConnection", "ClientISP"]
+      client_name: ["Session", "CurrentConnection", "ClientName"]
+    field_mappings:
+      ConnectionFailureEnumValue: "ConnectionFailureEnumValue"
+    timestamp_field: "FailureDate"
+    
+  - api_name: "configlog"                 # Nome dell'API da interrogare (deve corrispondere a api_config.yaml)
+    measurement_name: "citrix_configlog"  # Nome della misura in VictoriaLogs
+    tag_mappings:                         # Mappatura dei campi di risposta API ai tag di VictoriaLogs
+      user: "User"
+      source: "Source"
+      operation_type: "OperationType"
+    field_mappings:                       # Mappatura dei campi di risposta API ai campi di VictoriaLogs
+      id: "Id"
+      text: "Text"
+      admin_ip: "AdminMachineIP"
+      status: "IsSuccessful"
+      start_time: "FormattedStartTime"
+      end_time: "FormattedEndTime"
+    timestamp_field: "FormattedEndTime"
+
+
+# Dati di configurazione da archiviare in PostgreSQL
+config:
+  - api_name: "delivery_groups"
+    field_types:
+      Id: "VARCHAR(255)"
+      Delivering: "VARCHAR(255)"
+      DeliveryType: "VARCHAR(255)"
+      InMaintenanceMode: "BOOLEAN"
+      SessionSupport: "VARCHAR(255)"
+
+  - api_name: "machines_config"            # Nome logico per la configurazione
+    api_name_override: "machines"          # Nome effettivo dell'API da interrogare
+    field_types:
+      Id: "VARCHAR(255)"
+      AgentVersion: "VARCHAR(255)"
+      AllocationType: "VARCHAR(255)"
+      FaultState: "VARCHAR(255)"
+      InMaintenanceMode: "BOOLEAN"
+      IPAddress: "VARCHAR(255)"
+      delivery_group_id: "VARCHAR(255)"
+      catalog_id: "VARCHAR(255)"
+
+  - api_name: "catalogs"                  # Nome logico per la configurazione
+    field_types:
+      Id: "VARCHAR(255)"
+      Name: "VARCHAR(255)"
+      AllocationType: "VARCHAR(255)"
+      AssignedCount: "INTEGER"
+      AvailableCount: "INTEGER"
+      PersistChanges: "VARCHAR(255)"
+      ProvisioningType: "VARCHAR(255)"
+
+  - api_name: "applications"              # Nome logico per la configurazione
+    field_types:
+      Enabled: "BOOLEAN"
+      PublishedName: "VARCHAR(255)"
+      
+# API di tipo log per scrivere in VictoriaLogs invece che PostgreSQL
+      operation_type: "OperationType"
+    field_mappings:                       # Mappatura dei campi di risposta API ai campi di VictoriaLogs
+      id: "Id"
+      text: "Text"
+      admin_ip: "AdminMachineIP"
+      status: "IsSuccessful"
+      start_time: "FormattedStartTime"
+      end_time: "FormattedEndTime"

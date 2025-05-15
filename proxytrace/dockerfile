@@ -1,0 +1,11 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY app.py .
+
+RUN pip install --no-cache-dir orjson requests tenacity pybreaker prometheus-client influxdb-client
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]

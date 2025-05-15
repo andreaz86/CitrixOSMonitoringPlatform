@@ -1,0 +1,92 @@
+-- Funzione helper per sostituire i backslash con una barra (/)
+function fix_backslashes(value)
+    return value:gsub("\\", "/")
+end
+
+-- (Opzionale) Funzione per rimuovere prefissi e caratteri speciali da Sourcetype
+function sourcetype_to_tag(sourcetype)
+    return sourcetype:gsub("uberAgent:", ""):gsub("[:]", "_"):lower()
+end
+
+-- Tabella per contenere le label da ignorare (popolata da file)
+ignore_labels = {}
+
+-- Carica le label da ignorare da un file
+function load_ignore_labels(path)
+    local file = io.open(path, "r")
+    if file then
+        for line in file:lines() do
+            line = line:match("^%s*(.-)%s*$") -- trim
+            if line ~= "" then
+                ignore_labels[string.lower(line)] = true
+            end
+        end
+        file:close()
+    else
+        print("Impossibile aprire il file delle label da ignorare: " .. tostring(path))
+    end
+end
+
+-- Handler generico che restituisce tutti i campi validi
+function handle_generic(record)
+    local new_record = {}
+    local has_fields = false
+
+    for k, v in pairs(record) do
+        local lower_key = string.lower(k)
+        if not lower_key:find("timestamp") and lower_key ~= "sourcetype" and not ignore_labels[lower_key] then
+            if type(v) == "string" then
+                v = fix_backslashes(v)
+            end
+            new_record[k] = v
+            if type(v) == "number" or type(v) == "boolean" then
+                has_valid_field = true
+            end
+        end
+    end
+
+    -- Se non ci sono campi validi, aggiungi campo dummy
+    if not has_valid_field then
+        new_record["__dummy_metric"] = 1
+    end
+
+    return new_record
+end
+
+-- Mappa per eventuali handler specifici (opzionale)
+handlers = {
+    -- puoi aggiungere override qui, se necessario
+}
+
+-- Funzione di trasformazione principale
+function transform_record(tag, timestamp, record)
+    local sourcetype = record["Sourcetype"]
+    local handler = handlers[sourcetype]
+
+    local new_record = nil
+
+    if handler ~= nil then
+        new_record = handler(record)
+    elseif sourcetype ~= nil then
+        new_record = handle_generic(record)
+    end
+
+    -- Override del timestamp usando @timestamp se disponibile.
+    if record["@timestamp"] ~= nil then
+        local ts_ms = tonumber(record["@timestamp"])
+        if ts_ms ~= nil then
+            timestamp = math.floor(ts_ms / 1000)
+        end
+    end
+
+    if new_record then
+        return 1, timestamp, new_record
+    else
+        print("Nessun handler per sourcetype: " .. tostring(sourcetype))
+        return -1, 0, 0
+    end
+end
+
+-- Esempio: carica label da ignorare da file
+-- Puoi mettere questo path in un config o chiamarlo in fase di init
+load_ignore_labels("/fluent-bit/etc/exclusions.txt")

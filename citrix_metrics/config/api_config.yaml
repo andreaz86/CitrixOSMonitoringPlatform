@@ -1,0 +1,116 @@
+# Configurazione delle API Citrix
+# Questo file definisce gli endpoint API e i parametri per le query
+
+# LoadIndexes API - raccoglie i dati sulla metrica di carico delle sessioni
+load_indexes:
+  endpoint: "/monitorodata/LoadIndexes"
+  type: "odata"  # Tipo di API (odata o rest)
+  time_window: 5  # Finestra temporale in secondi per filtrare i dati
+  filter_field: "CreatedDate"  # Campo da usare per il filtro temporale
+  polling_interval: 60  # Intervallo di polling in secondi (5 minuti)
+  timestamp_field: "CreatedDate"  # Campo da usare come timestamp per VictoriaMetrics
+  select:
+    - "EffectiveLoadIndex"
+    - "CreatedDate"
+  expand:
+    Machine:  # Espandi i dati della macchina
+      - "Name"
+
+
+# Delivery Groups API
+delivery_groups:
+  endpoint: "/cvad/manage/DeliveryGroups"
+  type: "rest"  # Tipo di API (odata o rest)
+  polling_interval: 3600  # Intervallo di polling in secondi (1 ora)
+  select:
+    - "Id"
+    - "Name"
+    - "Delivering"
+    - "DeliveryType"
+    - "InMaintenanceMode"
+
+machines:
+  endpoint: "/cvad/manage/Machines"
+  type: "rest"  # Tipo di API (odata o rest)
+  polling_interval: 3600  # Intervallo di polling in secondi (5 minuti)
+  select:
+    - "Id"
+    - "Name"
+    - "AgentVersion"
+    - "AllocationType"
+    - "IPAddress"
+    - "InMaintenanceMode"
+    - "FaultState"
+  expand:
+    DeliveryGroup:  # Espandi i dati del gruppo di consegna
+      - "Id"
+    MachineCatalog:  # Espandi i dati del catalogo
+      - "Id"
+    
+catalogs:
+  endpoint: "/cvad/manage/MachineCatalogs"
+  type: "rest"  # Tipo di API (odata o rest)
+  polling_interval: 3600  # Intervallo di polling in secondi (5 minuti)
+  select:
+    - "Id"
+    - "Name"
+    - "ProvisioningType"
+    - "PersistChanges"
+    - "AllocationType"
+    - "AssignedCount"
+    - "AvailableCount"
+    - "ProvisioningType"
+
+applications:
+  endpoint: "/cvad/manage/Applications"
+  type: "rest"  # Tipo di API (odata o rest)
+  polling_interval: 3600  # Intervallo di polling in secondi (5 minuti)
+  select:
+    - "Id"
+    - "Name"
+    - "PublishedName"
+    - "Enabled"
+    - "AssociatedDeliveryGroupUuids"
+  multi_value_fields:  # Campi che possono contenere più valori
+    - "AssociatedDeliveryGroupUuids"
+
+
+sessionfailure:
+  endpoint: "/monitorodata/ConnectionFailureLogs"
+  type: "odata"  # Tipo di API (odata o rest)
+  timestamp_field: "FailureDate" 
+  filter_field: "FailureDate"
+  polling_interval: 60  # Intervallo di polling in secondi (5 minuti)
+  select:
+    - "Id"
+    - "SessionKey"
+    - "FailureDate"
+    - "ConnectionFailureEnumValue"
+  expand:
+    User:  # Espandi i dati del gruppo di consegna
+      - "UserName"
+    Session:
+      CurrentConnection:
+        - "ClientName"
+        - "ClientAddress"
+        - "ClientPublicIP"
+        - "ClientISP"
+    Machine:
+      - "Name"
+
+
+configlog:
+  endpoint: "/cvad/manage/ConfigLog/Operations"
+  type: "log"  # Tipo di API (odata o rest)
+  polling_interval: 600  # Intervallo di polling in secondi (5 minuti)
+  days_to_search: 1  # Giorni da mantenere per i log
+  select:
+    - "Id"
+    - "Text"
+    - "User"
+    - "Source"
+    - "AdminMachineIP"
+    - "FormattedEndTime"
+    - "FormattedStartTime"
+    - "IsSuccessful"
+    - "OperationType"

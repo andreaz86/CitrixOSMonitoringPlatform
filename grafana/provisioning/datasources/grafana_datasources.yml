@@ -1,0 +1,93 @@
+apiVersion: 1
+datasources:
+
+- name: Prom_VictoriaMetrics
+  type: prometheus
+  access: proxy
+  url: http://victoriametrics_internal:8428
+  isDefault: true
+  editable: true
+  jsonData:
+    prometheusType: Prometheus
+    prometheusVersion: 2.24.0
+
+
+- name: Business Satellite
+  type: volkovlabs-grapi-datasource
+  access: proxy
+  uid: grapi
+  orgId: 1
+  version: 1
+  editable: true
+
+
+- name: VictoriaLogs
+  # <string, required> Sets the data source type.
+  type: victoriametrics-logs-datasource
+  # <string, required> Sets the access mode, either
+  # proxy or direct (Server or Browser in the UI).
+  access: proxy
+  # <string> Sets URL for sending queries to VictoriaLogs server.
+  # see https://docs.victoriametrics.com/victorialogs/querying/
+  url: http://victorialogs:9428
+  # <string> Sets the pre-selected datasource for new panels.
+  # You can set only one default data source per organization.
+  isDefault: false
+
+- name: 'uberAgent'
+  type: 'victoriametrics-metrics-datasource'
+  url: 'http://victoriametrics:8428'
+  access: proxy
+  isDefault: false
+  orgId: 1
+  version: 1
+  editable: true
+
+- name: 'CitrixCloud API'
+  type: yesoreyeram-infinity-datasource
+  uid: pdc-oauth2-client-credentials
+  editable: true
+  jsonData:
+    oauth2:
+      token_url: 'https://api.cloud.com/cctrustoauth2/root/tokens/clients'
+      #client_id: '0afdaea9-4949-467e-b8ee-c1b358e06f1e' ## Replace xxxxxxx with actual client id
+      client_id: ${CTX_CLIENT_ID}
+    auth_method: 'oauth2'
+    allowedHosts:
+      - 'https://api.cloud.com'
+      - 'http://citrixapi'
+    tlsSkipVerify: true
+    timeoutInSeconds: 60
+    allowDangerousHTTPMethods: true
+    customHealthCheckEnabled: true
+    customHealthCheckUrl: 'http://citrixapi/cvad/manage/me'
+    httpHeaderName1: 'Citrix-CustomerId'
+    httpHeaderName2: 'Citrix-InstanceId'
+  secureJsonData:
+    #oauth2ClientSecret: '_XgsRYzTrGFL72shvZrftQ=='
+    oauth2ClientSecret: ${CTX_CLIENT_SECRET}
+    #httpHeaderValue1: 'TelecomItali'
+    httpHeaderValue1: ${CTX_CUSTOMER_ID}
+    #httpHeaderValue2: '9f38f8a2-38cd-492e-a2d7-68169cd3b556'
+    httpHeaderValue2: ${CTX_SITE_ID}
+
+- name: Jaeger
+  type: jaeger
+  url: http://jaeger:16686
+  access: proxy
+  readOnly: false
+  isDefault: false
+
+
+- name: CitrixData
+  type: postgres
+  access: proxy
+  url: postgresql:5432
+  user: svc_citrix_metrics
+  secureJsonData:
+    password: ${DB_SVCCITRIX_PWD}
+  isDefault: false
+  jsonData:
+    database: citrix_metrics
+    sslmode: disable
+    postgresVersion: 1500

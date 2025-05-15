@@ -1,0 +1,72 @@
+-- Funzione helper per sostituire i backslash con una barra (/)
+function fix_backslashes(value)
+    return value:gsub("\\", "/")
+end
+
+-- (Opzionale) Funzione per rimuovere prefissi e caratteri speciali da Sourcetype
+function sourcetype_to_tag(sourcetype)
+    return sourcetype:gsub("uberAgent:", ""):gsub("[:]", "_"):lower()
+end
+
+-- Handler generico che restituisce tutti i campi, escludendo quelli che:
+-- - Contengono la parola "timestamp" (case insensitive)
+-- - Sono "Sourcetype"
+-- Durante la copia, se il valore è una stringa, sostituisce i backslash con "/"
+-- Le chiavi vengono preservate nel loro formato originale.
+function handle_generic(record)
+    local new_record = {}
+
+    for k, v in pairs(record) do
+        local lower_key = string.lower(k)
+        if not lower_key:find("timestamp") and lower_key ~= "sourcetype" then
+            if type(v) == "string" then
+                v = fix_backslashes(v)
+            end
+            new_record[k] = v
+        end
+    end
+
+    return new_record
+end
+
+-- Mappa per eventuali handler specifici (opzionale)
+handlers = {
+    -- puoi aggiungere override qui, se necessario
+}
+
+-- Funzione di trasformazione principale
+function transform_record(tag, timestamp, record)
+    local sourcetype = record["Sourcetype"]
+    local handler = handlers[sourcetype]
+
+    local new_record = nil
+
+    if handler ~= nil then
+        new_record = handler(record)
+    elseif sourcetype ~= nil then
+        new_record = handle_generic(record)
+    end
+
+    -- Override del timestamp usando @timestamp se disponibile.
+    -- Si suppone che @timestamp sia in millisecondi e venga convertito in secondi.
+    -- if record["@timestamp"] ~= nil then
+    --     local ts_ms = tonumber(record["@timestamp"])
+    --     if ts_ms ~= nil then
+    --         timestamp = math.floor(ts_ms / 1000)
+    --     end
+    -- end
+    if record["@timestamp"] ~= nil then
+        local ts_ms = tonumber(record["@timestamp"])
+        if ts_ms ~= nil then
+            timestamp = ts_ms / 1000
+        end
+    end
+
+    if new_record then
+        return 1, timestamp, new_record
+
+    else
+        print("Nessun handler per sourcetype: " .. tostring(sourcetype))
+        return -1, 0, 0
+    end
+end

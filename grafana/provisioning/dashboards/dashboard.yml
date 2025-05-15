@@ -1,0 +1,16 @@
+apiVersion: 1
+
+providers:
+- name: InternalMonitor
+  orgId: 1
+  folder: 'Internal Monitor'
+  type: file
+  options:
+    path: /var/lib/grafana/dashboards/internal
+
+- name: uberAgent
+  orgId: 1
+  folder: 'uberAgent'
+  type: file
+  options:
+    path: /var/lib/grafana/dashboards/uberAgent

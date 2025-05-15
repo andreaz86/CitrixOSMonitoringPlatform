@@ -1,0 +1,48 @@
+api:
+  dashboard: true
+  insecure: true
+
+serversTransport:
+  insecureSkipVerify: true
+
+providers:
+  file:
+    directory: "/conf"
+    watch: true
+
+log:
+  level: ERROR
+
+# stores:
+#   default:
+#     defaultGeneratedCert:
+#       resolver: letsencrypt
+#       domain:
+#         main: azcloud.ovh
+
+
+
+
+accessLog:
+  filePath: "/var/log/traefik/traefik.log"
+  format: json
+
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+    http3:
+      advertisedPort: 443
+    http:
+      tls: {}
+      # middlewares:
+      #   - hsts-headers
+
+    
+metrics:
+  prometheus:
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true

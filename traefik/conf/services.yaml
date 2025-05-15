@@ -1,0 +1,14 @@
+http:
+  services:
+    grafana:
+      loadBalancer:
+        servers:
+        - url: "http://grafana:3000"
+    pgadmin:
+      loadBalancer:
+        servers:
+        - url: "http://pgadmin:5433"
+    repo:
+      loadBalancer:
+        servers:
+        - url: "http://nginx:8089"
