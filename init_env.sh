@@ -1,6 +1,12 @@
 #!/bin/bash
 
+TEMPLATE_FILE=".env.template"
 ENV_FILE=".env"
+
+# Copy template to .env if it doesn't exist or if template is newer
+if [[ ! -f "$ENV_FILE" ]] || [[ "$TEMPLATE_FILE" -nt "$ENV_FILE" ]]; then
+    cp "$TEMPLATE_FILE" "$ENV_FILE"
+fi
 
 declare -A questions=(
   [GF_SECURITY_ADMIN_USER]="Grafana admin username"
@@ -9,6 +15,8 @@ declare -A questions=(
   [POSTGRES_PASSWORD]="Postgres password"
   [CTX_CLIENT_ID]="Citrix Client ID"
   [CTX_CLIENT_SECRET]="Citrix Client Secret"
+  [GF_DATABASE_PASSWORD]="Grafana database password"
+  [DB_SVCCITRIX_PWD]="Service Citrix database password"
 )
 
 generate_password() {
