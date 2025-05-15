@@ -284,7 +284,7 @@ services:
 
   telegraf:
     image: telegraf:latest
-    user: telegraf:996
+    user: telegraf:${TELEGRAF_DOCKER_GID}
     container_name: telegraf
     volumes:
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
