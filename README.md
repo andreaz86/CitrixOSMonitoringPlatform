@@ -2,6 +2,53 @@
 
 A comprehensive Docker-based monitoring and configuration management system for Citrix environments, providing metrics collection, data storage, and visualization capabilities.
 
+## Table of Contents
+- [Project Goals](#project-goals)
+- [Component Documentation](#component-documentation)
+- [Disclaimer](#disclaimer)
+- [System Requirements](#system-requirements)
+  - [Host Machine Requirements](#host-machine-requirements)
+  - [Software Prerequisites](#software-prerequisites)
+  - [Client Components Requirements](#client-components-requirements)
+- [System Architecture](#system-architecture)
+- [Core Components](#core-components)
+  - [Citrix Metrics Collector](#citrix-metrics-collector)
+  - [Sidecar](#sidecar)
+  - [Telegraf Builder](#telegraf-builder)
+  - [Observability Stack](#observability-stack)
+  - [Monitoring & Alerting](#monitoring--alerting)
+- [Data Flows](#data-flows)
+- [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
+  - [Main Environment Variables](#main-environment-variables)
+  - [Port Configuration](#port-configuration)
+  - [Template Directories](#template-directories)
+  - [Key Environment Variables](#key-environment-variables)
+- [Data Ingestion Paths](#data-ingestion-paths)
+  - [Data Ingestion Architecture](#data-ingestion-architecture)
+  - [Telegraf Installation on Windows](#telegraf-installation-on-windows)
+  - [Distributed Tracing with Jaeger](#distributed-tracing-with-jaeger)
+- [Component Roles](#component-roles)
+  - [NGINX](#nginx)
+  - [Fluent Bit](#fluent-bit)
+- [Installation and Startup](#installation-and-startup)
+- [System Monitoring](#system-monitoring)
+  - [Grafana](#grafana)
+  - [Jaeger UI](#jaeger-ui)
+- [Data Structure](#data-structure)
+  - [VictoriaMetrics](#victoriametrics)
+  - [VictoriaLogs](#victorialogs)
+  - [PostgreSQL](#postgresql)
+- [Development and Maintenance](#development-and-maintenance)
+  - [Adding New Metrics](#adding-new-metrics)
+  - [Customizing Templates](#customizing-templates)
+  - [Adding New Dashboards](#adding-new-dashboards)
+- [Troubleshooting](#troubleshooting)
+  - [Component Health Check](#component-health-check)
+  - [Common Issues](#common-issues)
+  - [Log Analysis](#log-analysis)
+  - [System Recovery](#system-recovery)
+
 ## Project Goals
 
 The main objectives of this project are:
@@ -608,8 +655,6 @@ Access the Jaeger UI to analyze distributed traces:
      # Check Fluent Bit input
      docker logs fluentbit_logs | grep "input"
      
-     # Verify metrics format
-     curl -v http://localhost:2020
      ```
 
 3. **Database Issues**
